@@ -1,0 +1,6 @@
+edge-tts>=7.0.0
+
+# Optional, not installed:
+#   faster-whisper   local speech-to-text for lya_chat.py --mic (no API key)
+# Nothing else is needed: Synthesis runs in the cloud, post-processing uses the
+# system ffmpeg, and the paid engine (Sarvam) uses only the Python standard library.

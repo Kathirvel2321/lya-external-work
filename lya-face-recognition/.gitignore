@@ -1,0 +1,25 @@
+# biometric data and keys - never commit
+private/*
+!private/README.md
+
+# debug images of the owner's face - never commit
+dataset/*
+!dataset/README.md
+
+# local model files - large, and not ours to redistribute
+models/*.onnx
+models/*.tflite
+models/*.pb
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# editor / os
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

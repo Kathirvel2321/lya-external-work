@@ -1,0 +1,10 @@
+# Your keys - never commit or share this file
+keys.env
+
+# Generated audio and caches (safe to delete any time)
+cache/
+out/
+
+# Python
+__pycache__/
+*.pyc
