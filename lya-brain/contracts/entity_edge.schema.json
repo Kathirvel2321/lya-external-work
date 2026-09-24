@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lya/contracts/entity_edge.schema.json",
+  "title": "LYA EntityEdge (typed relationship, layer L3)",
+  "description": "A relationship with a validity interval, so 'what was true in July' stays answerable and superseded facts never poison recall. Plain SQLite rows - no graph server.",
+  "type": "object",
+  "required": ["subject", "predicate", "object", "valid_from", "provenance"],
+  "properties": {
+    "subject": { "type": "string", "minLength": 1, "description": "Entity id or canonical name." },
+    "predicate": { "type": "string", "minLength": 1, "description": "Closed vocabulary, e.g. works_at, brother_of, prefers, lives_in, owns." },
+    "object": { "type": "string", "minLength": 1 },
+    "valid_from": { "type": "string", "format": "date-time" },
+    "valid_to": { "type": ["string", "null"], "format": "date-time", "description": "null = currently true." },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 },
+    "provenance": {
+      "type": "object",
+      "required": ["store", "ref"],
+      "properties": {
+        "store": { "type": "string", "enum": ["l3_semantic", "owner_stated", "model_generated"] },
+        "ref": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "superseded_by": { "type": ["string", "null"], "description": "Points at the newer edge; the old row is closed, never deleted (D-10)." }
+  },
+  "additionalProperties": false
+}

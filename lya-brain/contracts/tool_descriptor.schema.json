@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lya/contracts/tool_descriptor.schema.json",
+  "title": "LYA ToolDescriptor (layer L4, procedural)",
+  "description": "One registered capability. Rule from 06-SKILL-LIBRARY.md, made machine-checkable: no capability without a registered matcher, a tier, and a test.",
+  "type": "object",
+  "required": ["name", "matcher", "tier", "fast", "timeout_ms", "idempotent", "test"],
+  "properties": {
+    "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "matcher": { "type": "string", "minLength": 1, "description": "Deterministic pattern (regex/keyword set). Routing must not need a model (T0 tier)." },
+    "tier": { "type": "string", "enum": ["PUBLIC", "TRUSTED", "OWNER"], "description": "Must exist in security/policy.py. Not in a tier = the capability does not exist." },
+    "fast": { "type": "boolean", "description": "true = no model call, no network. Fast path budget < 100 ms." },
+    "timeout_ms": { "type": "integer", "minimum": 1 },
+    "idempotent": { "type": "boolean", "description": "false = the executor must record an idempotency key and never blind-retry." },
+    "test": { "type": "string", "minLength": 1, "description": "Name of the offline test that proves it. No test = status is 'unverified', never 'done'." },
+    "requires_network": { "type": "boolean", "default": false },
+    "egress": { "type": "string", "enum": ["none", "public", "derived", "private_never"], "default": "none" },
+    "args_schema": { "type": ["object", "null"], "description": "Optional JSON Schema for arguments; used to validate a generated plan before execution." },
+    "notes": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}

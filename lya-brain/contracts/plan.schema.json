@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lya/contracts/plan.schema.json",
+  "title": "LYA Plan (a multi-step goal)",
+  "description": "What the owner approves once (ADR-002). plan_hash covers steps, tools, targets and tiers; any deviation re-escalates. A model may PROPOSE a plan but never authorises one (D-2).",
+  "type": "object",
+  "required": ["id", "goal", "steps", "plan_hash"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "goal": { "type": "string", "minLength": 1 },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["index", "tool", "tier", "timeout_ms"],
+        "properties": {
+          "index": { "type": "integer", "minimum": 0 },
+          "tool": { "type": "string", "description": "Must exist in the registry (tool_descriptor)." },
+          "args": { "type": ["object", "null"] },
+          "tier": { "type": "string", "enum": ["PUBLIC", "TRUSTED", "OWNER"] },
+          "timeout_ms": { "type": "integer", "minimum": 1 },
+          "idempotent": { "type": "boolean", "default": false },
+          "expected": { "type": ["string", "null"], "description": "What success looks like - used by VERIFY (07-NEURAL-SCHEMA.md step 8)." }
+        },
+        "additionalProperties": false
+      }
+    },
+    "needs_approval": { "type": "boolean", "description": "true if any step's tier is OWNER." },
+    "plan_hash": { "type": "string", "minLength": 16, "description": "Stable hash of steps+tools+targets+tiers. The approval is bound to THIS string." },
+    "validated_by": { "type": ["string", "null"], "description": "Optional typed-decision check (JEV-class): 'does any step leave the approved tool set?' - advisory only." },
+    "created": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

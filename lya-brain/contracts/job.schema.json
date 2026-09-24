@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lya/contracts/job.schema.json",
+  "title": "LYA Job (durable execution state)",
+  "description": "The automation spine (ADR-011). Must survive a restart: on boot, 'running' jobs are resumed or visibly failed - never silently dropped.",
+  "type": "object",
+  "required": ["id", "plan_id", "step", "status", "attempts", "idempotency_key"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "plan_id": { "type": "string", "minLength": 1, "description": "Links to plan.schema.json; the plan_hash is what the owner approved." },
+    "goal": { "type": "string", "description": "Human-readable restatement, for the UI and the audit log." },
+    "step": { "type": "integer", "minimum": 0 },
+    "status": { "type": "string", "enum": ["queued", "running", "needs_approval", "done", "failed", "cancelled"] },
+    "attempts": { "type": "integer", "minimum": 0, "default": 0 },
+    "idempotency_key": { "type": "string", "minLength": 8, "description": "Applied twice = written once. Required so a retry cannot double-execute (07-NEURAL-SCHEMA.md 7)." },
+    "due_at": { "type": ["string", "null"], "format": "date-time", "description": "Set by the scheduler (L7 trigger), not polled every 30 s (S-10)." },
+    "approvals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["plan_hash", "at", "by"],
+        "properties": {
+          "plan_hash": { "type": "string" },
+          "at": { "type": "string", "format": "date-time" },
+          "by": { "type": "string", "enum": ["owner_phone", "owner_local"] },
+          "scope": { "type": "string", "description": "What exactly was approved. Deviating from it re-escalates (ADR-002)." }
+        },
+        "additionalProperties": false
+      }
+    },
+    "created": { "type": "string", "format": "date-time" },
+    "updated": { "type": "string", "format": "date-time" },
+    "result": { "type": ["string", "null"] },
+    "error": { "type": ["string", "null"], "description": "Failures are shown, never hidden (02-DATA-ROUTING.md: never claim saved when the write failed)." }
+  },
+  "additionalProperties": false
+}

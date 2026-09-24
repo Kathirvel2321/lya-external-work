@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lya/contracts/memory_record.schema.json",
+  "title": "LYA MemoryRecord (layer L3, semantic)",
+  "description": "One fact about the owner or the world. Biometrics are NOT stored here - see ADR-004; they live in vision/*.lya only.",
+  "type": "object",
+  "required": ["id", "kind", "key", "value", "provenance", "valid_from"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "kind": { "type": "string", "enum": ["fact", "preference", "profile", "lesson", "protected", "admin_note"] },
+    "key": { "type": "string", "minLength": 1 },
+    "value": { "type": "string" },
+    "importance": { "type": "number", "minimum": 0, "maximum": 5, "default": 1 },
+    "provenance": {
+      "type": "object",
+      "required": ["store", "ref", "written_at", "register"],
+      "properties": {
+        "store": { "type": "string", "enum": ["l2_episodic", "l3_semantic", "l5_self_model", "owner_stated", "model_generated"] },
+        "ref": { "type": "string" },
+        "written_at": { "type": "string", "format": "date-time" },
+        "register": { "type": "string", "enum": ["saved", "belief", "refusal"], "description": "The three abstention registers (ADR-006). A model_generated item may never be labelled 'saved'." }
+      },
+      "additionalProperties": false
+    },
+    "valid_from": { "type": "string", "format": "date-time" },
+    "valid_to": { "type": ["string", "null"], "format": "date-time", "description": "null = still current. Superseded facts are closed, never deleted (D-10)." },
+    "protected": { "type": "boolean", "default": false, "description": "Explicit memories are never auto-deleted (D-10)." },
+    "hits": { "type": "integer", "minimum": 0, "default": 0 }
+  },
+  "additionalProperties": false
+}

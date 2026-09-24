@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lya/contracts/episode.schema.json",
+  "title": "LYA Episode (layer L2, episodic)",
+  "description": "What happened, in order. Bounded and discarded by default; never auto-promoted to L3. This is also the audit trail for actions.",
+  "type": "object",
+  "required": ["id", "at", "kind", "summary"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "at": { "type": "string", "format": "date-time" },
+    "session": { "type": ["string", "null"], "description": "Session id, so identity-bound context never leaks across people." },
+    "actor": { "type": "string", "enum": ["owner", "guest", "friend", "secondary", "system", "scheduler"] },
+    "kind": { "type": "string", "enum": ["utterance", "command", "tool_call", "tool_result", "approval", "denial", "error", "consolidation"] },
+    "summary": { "type": "string", "description": "Short, non-secret description. Secrets never enter an episode." },
+    "refs": { "type": "array", "items": { "type": "string" }, "description": "Job ids, memory ids, file refs." },
+    "tier": { "type": ["string", "null"], "enum": ["PUBLIC", "TRUSTED", "OWNER", null] },
+    "outcome": { "type": ["string", "null"], "enum": ["ok", "denied", "failed", "cancelled", null] },
+    "latency_ms": { "type": ["integer", "null"], "minimum": 0 },
+    "egress": { "type": "string", "enum": ["none", "public", "derived", "private_never"], "default": "none" }
+  },
+  "additionalProperties": false
+}
