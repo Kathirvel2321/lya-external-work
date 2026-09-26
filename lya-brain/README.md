@@ -44,6 +44,7 @@ This folder answers 1–4. Building starts only after the owner reviews the plan
 | **11** | [`11-THREAT-MODEL.md`](11-THREAT-MODEL.md) | **Security.** What we defend, what we cannot, and 15 weaknesses with file:line evidence |
 | **12** | [`12-ZERO-DISCLOSURE.md`](12-ZERO-DISCLOSURE.md) | **Compromise ≠ disclosure** — compartment keys, egress shield, injection shield, 20 red tests |
 | **13** | [`13-SELF-PROTECTION.md`](13-SELF-PROTECTION.md) | She must not boom herself — least privilege, resource guards, recovery, staying current |
+| **14** | [`14-GENIUS-TRICKS.md`](14-GENIUS-TRICKS.md) | The mathematician/magician tricks — how to get big-system results on a ₹0, 7.71 GB stack |
 | — | [`contracts/`](contracts/) · [`ADR/`](ADR/) · [`evals/golden.jsonl`](evals/golden.jsonl) | Machine-readable schemas, decision records, and the accuracy gate |
 | — | [`recovery/vault_recovery.py`](recovery/vault_recovery.py) | **Working code**, cryptographically verified. Run `export` today |
 | — | [`../lya-agency/`](../lya-agency/) | **Sister folder — what she can actually do:** access tiers, video→upload pipeline, laptop diagnosis, and why payment stays yours |

@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LYA · Neural Flow</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:#07090d;
+    font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif}
+  canvas{display:block;width:100vw;height:100vh}
+
+  /* minimal corner controls — icon-only, no sentences */
+  .icons{position:fixed;right:18px;bottom:18px;display:flex;gap:8px;z-index:10}
+  .icons button{width:34px;height:34px;border-radius:50%;cursor:pointer;
+    background:rgba(22,27,34,.8);border:1px solid #30363d;color:#8b949e;
+    display:grid;place-items:center;transition:.18s;backdrop-filter:blur(6px)}
+  .icons button:hover{border-color:#58a6ff;color:#e6edf3}
+  .icons svg{width:15px;height:15px;fill:currentColor}
+  .hint{position:fixed;left:18px;bottom:20px;color:#30363d;font-size:11px;
+    letter-spacing:.14em;font-weight:600;z-index:10;user-select:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="hint">LYA</div>
+
+<div class="icons">
+  <button id="pause" title="play / pause">
+    <svg viewBox="0 0 16 16"><rect x="3" y="2.5" width="3.4" height="11" rx="1"/><rect x="9.6" y="2.5" width="3.4" height="11" rx="1"/></svg>
+  </button>
+  <button id="speed" title="speed">
+    <svg viewBox="0 0 16 16"><path d="M3 13L8 3l3 5.5-5 4.5z"/><path d="M9.5 13l4-6 1 5.5z" opacity=".55"/></svg>
+  </button>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════
+   LYA NEURAL FLOW — pure motion, no text.
+
+   One orbiting neural field. Every element maps to the research docs:
+     · 8 rings ............ the eight layers L0–L7 (07-NEURAL-SCHEMA.md)
+     · core ............... the vault / policy gate (never crossed)
+     · travelling sparks .. one query moving IN -> ROUTE -> RECALL -> CHECK
+                            -> ANSWER, and most sparks never reach the outer
+                            model orbit (the "model is the last resort" rule)
+     · cyan pulses ........ verification; red sparks = refused/abstained
+
+   Dependency-free: raw 2D canvas + requestAnimationFrame.
+   Deliberately no libraries — a visual that dies offline teaches nothing.
+   ══════════════════════════ */
+
+const cv = document.getElementById('c');
+/* willReadFrequently is required by the QA script (getImageData sampling);
+   the Chrome warning is expected and harmless without it too. */
+const ctx = cv.getContext('2d', { alpha: false, willReadFrequently: true });
+
+let W = 0, H = 0, DPR = 1, cx = 0, cy = 0, R = 0;
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  cx = W / 2; cy = H / 2;
+  R = Math.min(W, H) * 0.42;          // outer radius
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ── the eight layers. Uneven spacing on purpose: L2/L3/L4 do the real work
+     (recall + registry), so they get the most room and read as the "thick" band. ── */
+const LAYERS = [
+  { n:'L0', c:[248, 81, 73], at:0.34, w:1.0 },   // Senses
+  { n:'L1', c:[255,123,114], at:0.42, w:1.0 },   // Working memory
+  { n:'L2', c:[210,153, 34], at:0.51, w:1.2 },   // Episodic
+  { n:'L3', c:[ 63,185, 80], at:0.62, w:1.4 },   // Semantic — the core of recall
+  { n:'L4', c:[ 88,166,255], at:0.73, w:1.3 },   // Procedural — the registry
+  { n:'L5', c:[163,113,247], at:0.82, w:1.0 },   // Self-model
+  { n:'L6', c:[ 57,197,207], at:0.91, w:1.1 },   // Verification
+  { n:'L7', c:[247,120,186], at:1.00, w:1.0 }    // Consolidation
+];
+const ringR = i => R * LAYERS[i].at;
+
+/* ── nodes on each ring: the registry / tools ── */
+const nodes = [];
+LAYERS.forEach((L, li) => {
+  const count = 8 + li * 2;
+  for (let k = 0; k < count; k++) {
+    nodes.push({
+      layer: li,
+      ang: (k / count) * Math.PI * 2 + li * 0.5,
+      spin: (li % 2 ? 1 : -1) * (0.05 + li * 0.006),
+      size: 1.5 + li * 0.13,
+      col: L.c,
+      flash: 0
+    });
+  }
+});
+
+/* ── outcomes. The WEIGHTS are the design: the model is the last resort, so
+     only 9 of 100 queries ever reach the violet (model) ring. ── */
+const OUTCOMES = [
+  { to:3, col:[ 63,185, 80], w:46 },   // answered from recall — no model
+  { to:4, col:[ 88,166,255], w:26 },   // a registry capability ran
+  { to:6, col:[ 57,197,207], w:14 },   // needed verification
+  { to:7, col:[163,113,247], w: 9 },   // reached the model (rare, by design)
+  { to:1, col:[248, 81, 73], w: 5 }    // refused / abstained
+];
+const W_TOTAL = OUTCOMES.reduce((s,o) => s + o.w, 0);
+function rollOutcome() {
+  let r = Math.random() * W_TOTAL;
+  for (const o of OUTCOMES) if ((r -= o.w) <= 0) return o;
+  return OUTCOMES[0];
+}
+
+/* ── a travelling query: goes inward -> the gate -> back out to its layer.
+     The head is deliberately LARGE, because the whole point of this visual is
+     that you can SEE a query choose not to reach the model. ── */
+const sparks = [];
+
+function pickSpd() { return 0.30 + Math.random() * 0.20; }
+
+function spawnSpark() {
+  const o = rollOutcome();
+  sparks.push({
+    o,
+    ang: Math.random() * Math.PI * 2,
+    dir: Math.random() < 0.5 ? 1 : -1,
+    t: 0,
+    spd: pickSpd(),
+    swirl: 0.55 + Math.random() * 0.6,
+    wob: Math.random() * 6.28,
+    trail: []
+  });
+}
+
+/* ── ambient dust, to make the field feel alive ── */
+const dust = [];
+for (let i = 0; i < 130; i++) {
+  dust.push({ a: Math.random()*Math.PI*2, r: Math.random(),
+              s: 0.0004 + Math.random()*0.0011, sz: Math.random()*1.3 + 0.3,
+              o: Math.random()*0.4 + 0.08 });
+}
+
+/* ── state ── */
+const TAU = Math.PI * 2;          // used by every arc() below — must stay defined
+let t0 = performance.now();
+let speed = 1, paused = false, lastSpawn = 0;
+
+/* ══════════════════════════ DRAW ══════════════════════════ */
+function frame(now) {
+    const dt = Math.min((now - t0) / 1000, 0.05); t0 = now;
+    const T = now / 1000;
+    const k = paused ? 0 : dt * speed;
+
+    /* ── no fade while paused, so the image is genuinely frozen ── */
+    if (!paused) {
+      ctx.fillStyle = 'rgba(5,7,11,0.34)';   // trails
+      ctx.fillRect(0, 0, W, H);
+    }
+    ctx.globalCompositeOperation = 'lighter';
+
+    /* ── Zone B haze: an off-centre glow that is deliberately NOT the core,
+         so the workshop reads as somewhere else ── */
+    const hx = cx + R * 0.62, hy = cy - R * 0.55;
+    const hz = ctx.createRadialGradient(hx, hy, 0, hx, hy, R * 0.72);
+    hz.addColorStop(0, 'rgba(210,153,34,0.055)');
+    hz.addColorStop(1, 'rgba(210,153,34,0)');
+    ctx.fillStyle = hz;
+    ctx.fillRect(0, 0, W, H);
+
+    /* ── dust ── */
+    for (const d of dust) {
+      d.a += d.s * k * 9;
+      const rr = R * (0.10 + d.r * 1.06);
+      ctx.fillStyle = `rgba(130,170,225,${d.o})`;
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(d.a) * rr, cy + Math.sin(d.a) * rr, d.sz, 0, TAU);
+      ctx.fill();
+    }
+
+    /* ── the eight rings ── */
+    for (let i = 0; i < LAYERS.length; i++) {
+      const L = LAYERS[i], rr = ringR(i);
+
+      const br = 0.07 + 0.05 * Math.sin(T * (0.32 + i * 0.045) + i);
+      ctx.strokeStyle = `rgba(${L.c[0]},${L.c[1]},${L.c[2]},${br})`;
+      ctx.lineWidth = L.w * 1.05;
+      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, TAU); ctx.stroke();
+
+      /* a bright arc sweeping the ring -> each layer is visibly "processing" */
+      const a0 = T * (0.20 + i * 0.05) * (i % 2 ? -1 : 1) + i * 0.9;
+      const len = 0.45 + (i % 3) * 0.30;
+      ctx.strokeStyle = `rgba(${L.c[0]},${L.c[1]},${L.c[2]},0.50)`;
+      ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.arc(cx, cy, rr, a0, a0 + len); ctx.stroke();
+
+      /* the leading head of that sweep */
+      const lx = cx + Math.cos(a0 + len) * rr, ly = cy + Math.sin(a0 + len) * rr;
+      const hg = ctx.createRadialGradient(lx, ly, 0, lx, ly, 7);
+      hg.addColorStop(0, `rgba(${L.c[0]},${L.c[1]},${L.c[2]},0.75)`);
+      hg.addColorStop(1, `rgba(${L.c[0]},${L.c[1]},${L.c[2]},0)`);
+      ctx.fillStyle = hg;
+      ctx.beginPath(); ctx.arc(lx, ly, 7, 0, TAU); ctx.fill();
+    }
+
+    /* ── nodes ── */
+    for (const n of nodes) {
+      n.ang += n.spin * k * 3.4;
+      const rr = ringR(n.layer);
+      const x = cx + Math.cos(n.ang) * rr, y = cy + Math.sin(n.ang) * rr;
+      const s = n.size * (1 + n.flash * 2.1);
+      ctx.fillStyle = `rgba(${n.col[0]},${n.col[1]},${n.col[2]},${0.42 + n.flash * 0.58})`;
+      ctx.beginPath(); ctx.arc(x, y, s, 0, TAU); ctx.fill();
+      if (n.flash > 0.05) {
+        const g2 = ctx.createRadialGradient(x, y, 0, x, y, 14 * n.flash);
+        g2.addColorStop(0, `rgba(${n.col[0]},${n.col[1]},${n.col[2]},${0.5 * n.flash})`);
+        g2.addColorStop(1, `rgba(${n.col[0]},${n.col[1]},${n.col[2]},0)`);
+        ctx.fillStyle = g2;
+        ctx.beginPath(); ctx.arc(x, y, 14 * n.flash, 0, TAU); ctx.fill();
+      }
+      n.flash *= 0.90;
+    }
+
+    /* ── the vault core ── */
+    const coreR = R * 0.215;
+    const cp = 1 + 0.04 * Math.sin(T * 1.15);
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR * 2.0);
+    g.addColorStop(0.00, 'rgba(235,248,255,0.98)');
+    g.addColorStop(0.14, 'rgba(150,210,255,0.62)');
+    g.addColorStop(0.36, 'rgba(88,140,255,0.24)');
+    g.addColorStop(1.00, 'rgba(20,30,60,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, cy, coreR * cp * 2.0, 0, TAU); ctx.fill();
+
+    ctx.strokeStyle = 'rgba(205,232,255,0.9)';   // the hard trust boundary
+    ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.arc(cx, cy, coreR, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = 'rgba(88,166,255,0.28)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, coreR * 1.19, 0, TAU); ctx.stroke();
+
+    /* ── spawn ── */
+    if (!paused && T - lastSpawn > 0.34 / Math.max(speed, 0.25)) { spawnSpark(); lastSpawn = T; }
+
+    /* ── travelling queries: inward -> the gate -> back out to their layer ── */
+    for (let s = sparks.length - 1; s >= 0; s--) {
+      const q = sparks[s];
+      q.t += q.spd * k * 1.9;
+      if (q.t >= 1.28) { sparks.splice(s, 1); continue; }
+
+      const target = LAYERS[q.o.to].at;
+      const inner  = 0.245;
+      let rad, alpha = 1;
+
+      if (q.t < 0.5) {
+        /* INWARD: from its home ring down to just outside the core */
+        const p = q.t / 0.5;
+        const e = p * p * (3 - 2 * p);                 // smoothstep
+        rad = target + (inner - target) * e;
+      } else if (q.t < 0.62) {
+        /* AT THE GATE: a brief hover — this is the policy check */
+        rad = inner;
+      } else {
+        /* OUTWARD: the answer travels back to its layer */
+        const p = Math.min((q.t - 0.62) / 0.50, 1);
+        const e = p * p * (3 - 2 * p);
+        rad = inner + (target - inner) * e;
+        if (q.t > 1.10) alpha = Math.max(0, 1 - (q.t - 1.10) / 0.18);
+      }
+
+      /* gentle swirl so paths don't stack on top of each other */
+      const swirl = q.t < 0.62 ? q.swirl : -q.swirl * 0.7;
+      const ang = q.ang + q.dir * swirl * (1 - Math.abs(q.t - 0.5) * 0.9)
+                + Math.sin(T * 0.9 + q.wob) * 0.10;
+
+      const rr = rad * R;
+      const x = cx + Math.cos(ang) * rr, y = cy + Math.sin(ang) * rr;
+      const [r, gg, b] = q.o.col;
+
+      /* trail — long and tapered, so the direction is followable */
+      q.trail.push({ x, y });
+      if (q.trail.length > 34) q.trail.shift();
+      for (let i = 0; i < q.trail.length; i++) {
+        const p = q.trail[i];
+        const f = i / q.trail.length;
+        ctx.fillStyle = `rgba(${r},${gg},${b},${f * f * 0.42 * alpha})`;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 1.1 + f * 3.4, 0, TAU); ctx.fill();
+      }
+
+      /* the head — LARGE, because this is the thing you are meant to follow */
+      const hg2 = ctx.createRadialGradient(x, y, 0, x, y, 13);
+      hg2.addColorStop(0, `rgba(255,255,255,${0.98 * alpha})`);
+      hg2.addColorStop(0.28, `rgba(${r},${gg},${b},${0.92 * alpha})`);
+      hg2.addColorStop(1, `rgba(${r},${gg},${b},0)`);
+      ctx.fillStyle = hg2;
+      ctx.beginPath(); ctx.arc(x, y, 13, 0, TAU); ctx.fill();
+
+      /* flash the node it lands on */
+      if (q.t > 0.86 && q.t < 1.06 && Math.random() < 0.5) {
+        let best = null, bd = 0.5;
+        for (const n of nodes) {
+          if (n.layer !== q.o.to) continue;
+          const d = Math.abs(((n.ang - ang + Math.PI * 3) % TAU) - Math.PI);
+          if (d < bd) { bd = d; best = n; }
+        }
+        if (best) best.flash = Math.min(best.flash + 1.1, 1.7);
+      }
+
+      /* ripple on arrival — the visual full stop of an answered query */
+      if (q.t > 0.86) {
+        const rp = (q.t - 0.86) / 0.42;
+        ctx.strokeStyle = `rgba(${r},${gg},${b},${(1 - rp) * 0.55 * alpha})`;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath(); ctx.arc(x, y, 6 + rp * 120, 0, TAU); ctx.stroke();
+      }
+    }
+
+    /* ── a soft pulse ring while the core is being consulted ── */
+    const nearCore = sparks.filter(q => q.t > 0.44 && q.t < 0.68).length;
+    if (nearCore > 0) {
+      const pr = 0.5 + 0.5 * Math.sin(T * 6);
+      ctx.strokeStyle = `rgba(150,210,255,${0.10 + 0.12 * pr})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, coreR * (1.30 + 0.06 * pr), 0, TAU); ctx.stroke();
+    }
+
+  ctx.globalCompositeOperation = 'source-over';
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ── controls ── */
+document.getElementById('pause').onclick = () => { paused = !paused; };
+document.getElementById('speed').onclick = () => { speed = speed >= 1.9 ? 0.5 : speed * 1.55; };
+</script>
+</body>
+</html>

@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LYA — Neural Schema · How the Brain Works</title>
+
+<!-- Tailwind (CDN). If offline, the hand-written CSS in <style> carries the layout. -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Motion (optional, opportunistic). Every animation on this page is built on the native
+     Web Animations API, so the page is fully animated with this block removed.
+     Tested findings, kept because they cost time to learn:
+       * `dist/motion.js` is UMD — an ESM `import()` of it yields NO exports.
+       * An inline <script type="module"> cannot resolve a cross-origin import when the
+         page is opened over file://, so the module never executes at all.
+       * Over file:// the injected classic script loads (200) but its global was not
+         reachable in time, so it cannot be relied upon. Hence: native WAAPI only. -->
+<script>
+  window.__motion = false;
+  window.__animate = null;
+  (function () {
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/motion@11.11.13/dist/motion.js';
+    s.onload = function () {
+      var m = window.Motion;
+      if (m && typeof m.animate === 'function') { window.__animate = m.animate; window.__motion = true; }
+    };
+    s.onerror = function () {};
+    document.head.appendChild(s);
+  })();
+</script>
+
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2128; --line:#30363d; --line2:#21262d;
+    --tx:#e6edf3; --dim:#8b949e; --dim2:#6e7681;
+    --ok:#3fb950; --warn:#d29922; --bad:#f85149; --info:#58a6ff;
+    --l0:#f85149; --l1:#ff7b72; --l2:#d29922; --l3:#3fb950;
+    --l4:#58a6ff; --l5:#a371f7; --l6:#39c5cf; --l7:#f778ba;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--tx);
+    font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  body{padding:0 0 96px;overflow-x:hidden}
+
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+  .mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace}
+
+  /* ---------- header ---------- */
+  header{padding:64px 0 40px;position:relative}
+  header::before{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(680px 260px at 18% -10%, rgba(88,166,255,.16), transparent 60%),
+               radial-gradient(520px 220px at 82% -6%, rgba(163,113,247,.14), transparent 60%)}
+  h1{font-size:clamp(30px,5vw,52px);line-height:1.05;margin:0 0 14px;letter-spacing:-.02em;font-weight:700}
+  h1 .g{background:linear-gradient(92deg,#58a6ff,#a371f7 55%,#f778ba);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--dim);font-size:17px;max-width:720px;line-height:1.6;margin:0}
+  .pill{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;
+    font-size:12px;font-weight:600;border:1px solid var(--line);background:var(--panel);color:var(--dim)}
+  .pill i{width:7px;height:7px;border-radius:50%;background:var(--info);display:block}
+  .pill.ok i{background:var(--ok)} .pill.warn i{background:var(--warn)} .pill.bad i{background:var(--bad)}
+
+  h2{font-size:clamp(20px,3vw,28px);margin:0 0 8px;letter-spacing:-.01em;font-weight:650}
+  h2 .n{color:var(--dim2);font-weight:400;margin-right:10px}
+  .lede{color:var(--dim);margin:0 0 26px;max-width:760px;line-height:1.65;font-size:15px}
+
+  section{padding:56px 0;border-top:1px solid var(--line2)}
+  section:first-of-type{border-top:none}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+  .grid{display:grid;gap:14px}
+
+  /* ---------- LAYER STACK (the brain) ---------- */
+  .stack{position:relative;padding:8px 0}
+  .layer{display:grid;grid-template-columns:64px 1fr auto;gap:16px;align-items:center;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:14px 18px;margin-bottom:10px;position:relative;overflow:hidden;
+    transition:border-color .25s,background .25s,transform .25s}
+  .layer::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c)}
+  .layer .id{font-weight:700;font-size:15px;color:var(--c);letter-spacing:.04em}
+  .layer .nm{font-weight:640;font-size:15.5px;margin-bottom:3px}
+  .layer .ds{color:var(--dim);font-size:13.5px;line-height:1.5}
+  .layer .mt{font-size:11.5px;color:var(--dim2);text-align:right;line-height:1.7;white-space:nowrap}
+  .layer .mt b{color:var(--tx);font-weight:600}
+  .layer.hot{border-color:var(--c);background:var(--panel2);
+    box-shadow:0 0 0 1px var(--c),0 0 32px -6px var(--c);transform:translateX(6px)}
+  .layer.hot .nm{color:#fff}
+
+  /* ---------- loop ---------- */
+  .loop{display:flex;flex-wrap:wrap;gap:10px}
+  .step{flex:1 1 168px;background:var(--panel);border:1px solid var(--line);border-radius:11px;
+    padding:13px 14px;position:relative;transition:all .25s}
+  .step .k{font-size:11px;color:var(--dim2);font-weight:700;letter-spacing:.09em}
+  .step .t{font-weight:620;font-size:14px;margin:5px 0 4px}
+  .step .d{font-size:12.5px;color:var(--dim);line-height:1.5}
+  .step.hot{border-color:var(--info);background:var(--panel2);transform:translateY(-4px);
+    box-shadow:0 10px 30px -12px var(--info)}
+  .step .gate{position:absolute;top:9px;right:10px;font-size:10px;font-weight:700;padding:2px 7px;
+    border-radius:999px;background:rgba(63,185,80,.14);color:var(--ok);border:1px solid rgba(63,185,80,.35)}
+  .step .gate.m{border-color:rgba(163,113,247,.4);background:rgba(163,113,247,.14);color:var(--l5)}
+
+  /* ---------- token path ---------- */
+  .pathwrap{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px;
+    position:relative;overflow:hidden}
+  .rail{display:flex;align-items:stretch;gap:0;position:relative;z-index:2;flex-wrap:wrap}
+  .node{flex:1 1 132px;text-align:center;padding:14px 8px;position:relative}
+  .node .dot{width:52px;height:52px;margin:0 auto 11px;border-radius:14px;display:grid;place-items:center;
+    border:1.5px solid var(--line);background:var(--bg);font-size:11px;font-weight:700;color:var(--dim);
+    transition:all .3s}
+  .node .lb{font-size:12.5px;font-weight:620}
+  .node .sb{font-size:11px;color:var(--dim2);margin-top:3px;line-height:1.4}
+  .node.on .dot{border-color:var(--c);color:var(--c);background:var(--panel2);
+    box-shadow:0 0 26px -6px var(--c);transform:scale(1.09)}
+  .node.on .lb{color:#fff}
+  .spark{position:absolute;width:9px;height:9px;border-radius:50%;background:var(--ok);
+    box-shadow:0 0 16px 3px var(--ok);top:44px;left:0;z-index:3;opacity:0}
+
+  .arrowline{position:absolute;left:6%;right:6%;top:44px;height:1.5px;background:var(--line2);z-index:1}
+
+  /* ---------- trees / cards ---------- */
+  .twocol{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:860px){.twocol{grid-template-columns:1fr}}
+  .reg{border-radius:11px;padding:14px 16px;border:1px solid var(--line);background:var(--panel)}
+  .reg .h{display:flex;align-items:center;gap:9px;font-weight:650;font-size:14.5px;margin-bottom:9px}
+  .reg .h span{font-size:11px;padding:2px 8px;border-radius:999px;font-weight:700}
+  .reg ul{margin:0;padding-left:17px;color:var(--dim);font-size:13.3px;line-height:1.75}
+  .r-saved{border-color:rgba(63,185,80,.4)}  .r-saved .h span{background:rgba(63,185,80,.15);color:var(--ok)}
+  .r-belief{border-color:rgba(210,153,34,.4)} .r-belief .h span{background:rgba(210,153,34,.15);color:var(--warn)}
+  .r-refuse{border-color:rgba(88,166,255,.4)} .r-refuse .h span{background:rgba(88,166,255,.15);color:var(--info)}
+
+  table{width:100%;border-collapse:collapse;font-size:13.6px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line2);vertical-align:top}
+  th{color:var(--dim);font-weight:600;font-size:12px;letter-spacing:.05em;text-transform:uppercase}
+  td code,.ik{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.4px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:#c9d1d9}
+
+  .tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;
+    border:1px solid currentColor;margin-right:5px}
+  .t-pub{color:var(--info)} .t-tru{color:var(--warn)} .t-own{color:var(--bad)} .t-fast{color:var(--ok)}
+
+  .flowbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;overflow-x:auto}
+  .flowbox pre{margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.6px;
+    line-height:1.72;color:#c9d1d9;white-space:pre}
+
+  .zone{display:grid;grid-template-columns:1fr;gap:12px}
+  .z{border-radius:12px;padding:15px 17px;border:1px solid var(--line);background:var(--panel);
+    border-left:3px solid var(--c)}
+  .z .zt{font-weight:650;font-size:14.5px;margin-bottom:5px;color:var(--c)}
+  .z .zd{color:var(--dim);font-size:13.3px;line-height:1.6}
+  .bridge{text-align:center;color:var(--dim2);font-size:12px;padding:5px 0;letter-spacing:.05em}
+
+  .ctl{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:22px}
+  button{background:var(--panel2);color:var(--tx);border:1px solid var(--line);border-radius:9px;
+    padding:8px 15px;font-size:13px;font-weight:600;cursor:pointer;transition:all .18s;font-family:inherit}
+  button:hover{border-color:var(--info);color:#fff}
+  button.on{background:rgba(88,166,255,.14);border-color:var(--info);color:#fff}
+  .hint{color:var(--dim2);font-size:12.5px}
+
+  .foot{color:var(--dim2);font-size:12.5px;line-height:1.8;border-top:1px solid var(--line2);padding-top:26px;margin-top:36px}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13.3px}
+  .kv i{color:var(--dim2);font-style:normal}
+
+  /* fallback animations when Motion is unavailable */
+  @keyframes pulseGlow{0%,100%{box-shadow:0 0 0 0 currentColor;opacity:.9}50%{box-shadow:0 0 22px 4px currentColor;opacity:1}}
+  .no-motion .node.on .dot{animation:pulseGlow 1.1s ease-in-out infinite}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px">
+    <span class="pill"><i></i>PROPOSAL · 2026-09-24</span>
+    <span class="pill ok"><i></i>Spec only — not wired into the app</span>
+    <span class="pill warn"><i></i>Source: 07-NEURAL-SCHEMA.md</span>
+  </div>
+  <h1>How <span class="g">LYA</span> thinks</h1>
+  <p class="sub">Not a chatbot wrapper. A layered state machine where the language model is the
+  <b>last</b> resort, every fact carries provenance, and saying <i>"I'm not sure"</i> is a correct answer.</p>
+</header>
+
+<!-- ══════════════════════════ 1 · THE EIGHT LAYERS -->
+<section id="s1">
+  <h2><span class="n">01</span>The eight layers</h2>
+  <p class="lede">Each layer is <b>a table plus rules</b> — not a subsystem. L1 is RAM, L2/L3/L5 are
+  encrypted SQLite, L4 is the registry, L6 is a function, L7 is a scheduled job.
+  The measured constraint: this laptop has <b>7.71 GB RAM, i3-1315U, no NPU</b>, so L1–L6 must fit in
+  well under <b>400 MB</b> and L7 must not run here.</p>
+
+  <div class="ctl">
+    <button id="playLayers" class="on">▶ Play thinking cycle</button>
+    <button id="stopLayers">■ Stop</button>
+    <span class="hint">Order shows how a single query travels up the stack</span>
+  </div>
+
+  <div class="stack" id="stack"></div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ 2 · THE LOOP -->
+<section id="s2">
+  <h2><span class="n">02</span>The ten-step thinking loop</h2>
+  <p class="lede">Step 4 is the whole design: <b>if recall already contains the fact, the model has
+  nothing to add except risk.</b> Genuine questions exit before any model is called.</p>
+
+  <div class="ctl">
+    <button id="playLoop" class="on">▶ Run a query through the loop</button>
+    <button id="stopLoop">■ Stop</button>
+    <span class="hint" id="loopSay">idle</span>
+  </div>
+
+  <div class="loop" id="loop"></div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ 3 · THE TOKEN PATH -->
+<section id="s3">
+  <h2><span class="n">03</span>Where a question actually goes</h2>
+  <p class="lede">Most queries never reach a model. The four cheaper things — registry, cache,
+  grounded recall, rule check — must all fail first. Watch the token travel.</p>
+
+  <div class="ctl">
+    <button id="playPath" class="on">▶ Send a query</button>
+    <span class="hint">Registry match · cache · recall · rules — then, only then, a model</span>
+  </div>
+
+  <div class="pathwrap">
+    <div class="arrowline"></div>
+    <div class="spark" id="spark"></div>
+    <div class="rail" id="rail"></div>
+  </div>
+
+  <div style="margin-top:14px" class="grid twocol">
+    <div class="card">
+      <div style="font-weight:650;margin-bottom:9px;color:var(--ok)">Fast path — no model, no network</div>
+      <div class="mono" style="font-size:12.4px;color:var(--dim);line-height:1.85">
+        open / close app · volume · reminders<br>
+        folder browse · memory read/write<br>
+        calendar · theme · sleep/wake
+      </div>
+      <div style="margin-top:11px;font-size:12.5px;color:var(--ok);font-weight:600">target &lt; 100 ms · 24 of 29 skills</div>
+    </div>
+    <div class="card">
+      <div style="font-weight:650;margin-bottom:9px;color:var(--l5)">Slow path — model or network</div>
+      <div class="mono" style="font-size:12.4px;color:var(--dim);line-height:1.85">
+        open conversation · research<br>
+        long analysis · council<br>
+        video script · publish
+      </div>
+      <div style="margin-top:11px;font-size:12.5px;color:var(--l5);font-weight:600">never blocks the orb</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════ 4 · REGISTERS -->
+<section id="s4">
+  <h2><span class="n">04</span>The abstention contract — what "correct" means</h2>
+  <p class="lede">Three registers, never blurred. A free model that abandons is
+  <b>safer and more useful</b> than a paid model that invents your mother's birthday.</p>
+
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
+    <div class="reg r-saved">
+      <div class="h"><span>SAVED</span> from a store (L2 / L3)</div>
+      <ul>
+        <li><i>"Here's what's saved: …"</i></li>
+        <li>Carries <b>provenance</b>: store, row, timestamp</li>
+        <li>Reliable. Citable. No model involved.</li>
+      </ul>
+    </div>
+    <div class="reg r-belief">
+      <div class="h"><span>BELIEF</span> model-generated</div>
+      <ul>
+        <li><i>"I believe …"</i></li>
+        <li>Plausible, <b>unverified</b></li>
+        <li>Never presented as fact</li>
+      </ul>
+    </div>
+    <div class="reg r-refuse">
+      <div class="h"><span>REFUSAL</span> no grounding</div>
+      <ul>
+        <li><i>"I'm not sure — I don't have that saved."</i></li>
+        <li>This is the <b>honest</b> register</li>
+        <li>Makes the other two trustworthy</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="flowbox" style="margin-top:16px">
+<pre>PROVENANCE IS MANDATORY
+  every item entering L1 carries  { store, ref, written_at, confidence }
+  an item WITHOUT provenance  ->  cannot be used for a factual claim
+
+"what's my brother's name?"
+  └─ answered from L3, with provenance
+  └─ or "I don't have that saved."
+  └─ NEVER from model memory</pre>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ 5 · WHAT MAY BECOME MEMORY -->
+<section id="s5">
+  <h2><span class="n">05</span>Write rules — what may become memory</h2>
+  <div style="overflow-x:auto">
+  <table>
+    <thead><tr><th>Source</th><th>Goes to</th><th>Lifetime</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td>Ordinary conversation</td><td class="ik">L2 only</td><td>discarded</td>
+          <td>never auto-promoted to L3</td></tr>
+      <tr><td><code>remember &lt;fact&gt;</code></td><td class="ik">L3</td><td>permanent</td>
+          <td>explicit · never auto-deleted (D-10)</td></tr>
+      <tr><td><code>learn &lt;topic&gt;</code></td><td class="ik">draft</td><td>10 min</td>
+          <td>labelled unverified, expires</td></tr>
+      <tr><td>Model output</td><td>—</td><td>—</td>
+          <td><b>never becomes a fact</b> without owner confirmation</td></tr>
+      <tr><td>Any consequential write</td><td>—</td><td>—</td>
+          <td>carries an <b>idempotency key</b> — a retry cannot duplicate</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════ 6 · L7 SLEEP -->
+<section id="s6">
+  <h2><span class="n">06</span>L7 — the "sleep" cycle</h2>
+  <p class="lede">Runs on the always-on box, never the laptop, only when the laptop is idle.
+  This is where episodic memory becomes durable knowledge.</p>
+  <div class="flowbox">
+<pre>1  compress stale episodes  ->  facts, with valid_from / valid_to
+2  dedupe facts             ->  a typed decision (JEV: duplicate? yes/no + confidence)
+3  decay unused RANKING     ->  never delete explicit memories   (D-10)
+4  rebuild FTS + vector indexes
+5  export a readable Markdown snapshot      <-- the escape hatch
+6  emit one metrics line: facts, compacted, index size, failures</pre>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ 7 · REGISTRY / CAPABILITY -->
+<section id="s7">
+  <h2><span class="n">07</span>A capability is a plug, not a paragraph</h2>
+  <p class="lede">No capability without a <b>matcher</b>, a <b>tier</b>, and a <b>test</b>.
+  A capability without a test is a liability with a nice name.</p>
+  <div class="flowbox">
+<pre>{
+  "name":       "device_health",
+  "matcher":    "(how|what).*(cpu|ram|memory|disk|health)",   <span style="color:#6e7681">← deterministic, no model</span>
+  "tier":       "PUBLIC",                                      <span style="color:#6e7681">← must exist in policy.py</span>
+  "fast":       true,                                          <span style="color:#6e7681">← no model, no network, &lt;100ms</span>
+  "timeout_ms": 2000,
+  "idempotent": true,
+  "egress":     "none",
+  "test":       "test_device_health_returns_all_fields"         <span style="color:#6e7681">← no test = unverified</span>
+}</pre>
+  </div>
+  <div style="margin-top:16px;overflow-x:auto">
+  <table>
+    <thead><tr><th>Tier</th><th>Meaning</th><th>Examples</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag t-pub">PUBLIC</span></td><td>unknown person, no private data</td>
+          <td>time, calculations, device status</td></tr>
+      <tr><td><span class="tag t-tru">TRUSTED</span></td><td>recognized, low-risk actions</td>
+          <td>open app, volume, folder list</td></tr>
+      <tr><td><span class="tag t-own">OWNER</span></td><td>admin + fresh phone approval</td>
+          <td>memory, files, screenshots, publish</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ 8 · ZONES -->
+<section id="s8">
+  <h2><span class="n">08</span>Where the work happens — three zones</h2>
+  <p class="lede">Not more security features. The goal is that <b>when something fails, nothing
+  important is in the same place as the failure.</b></p>
+
+  <div class="zone">
+    <div class="z" style="--c:var(--ok)">
+      <div class="zt">ZONE A — "HOME" · the laptop</div>
+      <div class="zd">vault (T0) · memory (T1) · biometrics (T2) · policy · audit · approvals<br>
+      <b>Rules:</b> no generated code · no untrusted content · no scrapers · no publishing</div>
+    </div>
+    <div class="bridge">▼ THE BRIDGE — artefacts out · secrets never in ▼</div>
+    <div class="z" style="--c:var(--warn)">
+      <div class="zt">ZONE B — "WORKSHOP" · Oracle VM / WSL2 / sacrificial rig</div>
+      <div class="zd">generated code · scrapers · network tools · ffmpeg renders · browser automation<br>
+      <b>Rules:</b> NO keys · NO biometrics · NO personal files · assume it WILL be compromised · rebuild &lt; 15 min</div>
+    </div>
+    <div class="bridge">▼ ciphertext only ▼</div>
+    <div class="z" style="--c:var(--info)">
+      <div class="zt">ZONE C — "FOREVER" · runs while the laptop is closed</div>
+      <div class="zd">scheduler · nightly backup · consolidation (L7) · notifications<br>
+      <b>Rules:</b> ciphertext only · never a key</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ 9 · SECURITY TRUTH -->
+<section id="s9">
+  <h2><span class="n">09</span>The security claim, stated honestly</h2>
+  <div class="card" style="border-color:rgba(248,81,73,.35)">
+    <div style="font-weight:650;margin-bottom:10px;color:var(--bad)">"Unhackable" does not exist</div>
+    <div style="color:var(--dim);font-size:14px;line-height:1.7">
+      Anyone who promises it is mistaken or selling something.
+      <b style="color:var(--tx)">But the goal underneath is achievable, and it is strong:</b>
+    </div>
+    <div style="margin-top:14px;padding:15px 17px;border-radius:11px;background:var(--panel2);
+         border:1px solid var(--line);font-size:15px;line-height:1.6">
+      <b style="color:var(--ok)">COMPROMISE ≠ DISCLOSURE.</b><br>
+      An attacker who fully owns the laptop must still be unable to read your top-tier secrets,
+      because <b>the key that opens them is not on the laptop</b>.
+    </div>
+  </div>
+
+  <div class="twocol" style="margin-top:16px">
+    <div class="card">
+      <div style="font-weight:650;margin-bottom:11px;color:var(--bad)">Two findings to fix first</div>
+      <div style="font-size:13.4px;color:var(--dim);line-height:1.9">
+        <b style="color:var(--tx)">W-1</b> — one key opens everything<br>
+        <span class="mono" style="font-size:11.8px">security/vault.py:31</span><br>
+        <span style="color:var(--dim2)">secrets, memory, biometrics, logs share one blast radius</span>
+        <div style="height:11px"></div>
+        <b style="color:var(--tx)">W-2</b> — the vault's own 2nd factor leaves the device<br>
+        <span class="mono" style="font-size:11.8px">security/auth_wall.py:88-102</span><br>
+        <span style="color:var(--dim2)">audio containing your spoken security word is uploaded to Groq Whisper</span>
+      </div>
+    </div>
+    <div class="card">
+      <div style="font-weight:650;margin-bottom:11px;color:var(--warn)">Explicitly NOT guaranteed</div>
+      <div style="font-size:13.4px;color:var(--dim);line-height:1.9">
+        · live capture while you unlock<br>
+        · physical coercion<br>
+        · zero-days in Windows / Python / CPU<br>
+        · supply-chain compromise upstream<br>
+        · owner error (passphrase beside the file)<br>
+        · a resourced state-level adversary
+        <div style="height:10px"></div>
+        <span style="color:var(--dim2);font-size:12.6px">Naming these is not defeatism. A model that
+        claims to defend everything defends nothing, because it cannot say where to spend effort.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ 10 · PROOF -->
+<section id="s10">
+  <h2><span class="n">10</span>How we prove it works</h2>
+  <p class="lede">If a test cannot be written for a claim, the claim does not belong in the document.</p>
+  <div class="flowbox">
+<pre>OFFLINE / SYNTHETIC
+  test_route_never_calls_model        a known command resolves with the model unreachable
+  test_answer_is_grounded_or_abstains a fact question with nothing stored -> REFUSAL, not invention
+  test_provenance_required            an item without provenance cannot be cited as "Saved"
+  test_recall_is_flat                 recall latency flat 100 -> 10,000 rows
+  test_write_is_idempotent            the same job step applied twice writes once
+  test_validity_interval              a superseded fact is not returned as current
+
+RED TESTS (must FAIL CLOSED)
+  R-01  copy .lya + .lya_key to a clean machine      -> T0 decryption FAILS
+  R-02  passphrase present, phone factor absent      -> T0 decryption FAILS
+  R-06  MCP tool description changed after pinning   -> tool REFUSED
+  R-07  instruction hidden in a document             -> treated as data, no tool call
+  R-10  grounded payload contains a secret           -> send BLOCKED + audit event</pre>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="kv" style="margin-bottom:18px">
+    <i>Source</i><span>07-NEURAL-SCHEMA.md · 08-PLATFORM-ROLES.md · 09-LOCAL-STACK-CPU.md · 11–13 security · lya-platform</span>
+    <i>Status</i><span>PROPOSAL — nothing here is wired into the running app</span>
+    <i>Hardware</i><span>Intel i3-1315U · 7.71 GB RAM · no NPU · Windows 11 Home · non-admin</span>
+  </div>
+  This visual is a <b>reading aid</b> for the research documents, not a claim that any of it is
+  implemented. Figures and file:line references come from the documents; the two security findings
+  (W-1, W-2) were confirmed by reading the code.
+</footer>
+
+</div>
+
+<script>
+/* ─────────────────────────── DATA (from the research docs) ─────────────────────────── */
+const LAYERS = [
+  {id:"L0", nm:"Senses",              c:"var(--l0)", ds:"mic · camera · screen · typed text",                     b:"&lt;200 ms wake", h:"RAM ring"},
+  {id:"L1", nm:"Working memory",      c:"var(--l1)", ds:"assembled state for this turn: pinned facts + recalled + plan", b:"&lt;50 ms assemble", h:"RAM"},
+  {id:"L2", nm:"Episodic",            c:"var(--l2)", ds:"what happened, in order — turns, actions, outcomes",        b:"&lt;5 ms write", h:"discard by default"},
+  {id:"L3", nm:"Semantic",            c:"var(--l3)", ds:"facts · entities + typed edges with validity intervals · profile", b:"&lt;20 ms read", h:"permanent"},
+  {id:"L4", nm:"Procedural",          c:"var(--l4)", ds:"skills / tools: matcher, tier, timeout, idempotency, test",  b:"&lt;100 ms", h:"one registry"},
+  {id:"L5", nm:"Self-model",          c:"var(--l5)", ds:"how you like answers · what failed before · calibration",  b:"&lt;10 ms", h:"permanent"},
+  {id:"L6", nm:"Verification",        c:"var(--l6)", ds:"ground → check → label · abstention",                      b:"&lt;50 ms", h:"rules first"},
+  {id:"L7", nm:"Consolidation",       c:"var(--l7)", ds:"episodes → facts · dedupe · decay · reindex · export",      b:"nightly",  h:"always-on box"}
+];
+
+const LOOP = [
+  {k:"01", t:"Perceive",    d:"normalize input · local",                    gate:""},
+  {k:"02", t:"Route",       d:"registry → embedder → model",                gate:"no model", m:false},
+  {k:"03", t:"Recall",      d:"FTS5 + vectors + graph → 5–20 items",        gate:"provenance"},
+  {k:"04", t:"Check",       d:"is the answer already determined?",          gate:"STOP HERE", m:true},
+  {k:"05", t:"Plan",        d:"steps + tool + tier + timeout → plan_hash",  gate:""},
+  {k:"06", t:"Approve",     d:"ONE owner approval for the PLAN",            gate:"D-2"},
+  {k:"07", t:"Act",         d:"tool + timeout + idempotency + audit",       gate:""},
+  {k:"08", t:"Verify",      d:"result vs intent → retry | escalate | ABSTAIN", gate:""},
+  {k:"09", t:"Answer",      d:"label the confidence + name the source",     gate:""},
+  {k:"10", t:"Consolidate", d:"write L2 · update L3 · L5 · metrics",        gate:""}
+];
+
+const RAIL = [
+  {id:"IN",  lb:"input",    sb:"typed / voice",       c:"var(--info)"},
+  {id:"REG", lb:"registry", sb:"rules · &lt;100 ms",  c:"var(--l4)"},
+  {id:"CAC", lb:"cache",    sb:"known answer",        c:"var(--l6)"},
+  {id:"REC", lb:"recall",   sb:"FTS5 + vectors",      c:"var(--l3)"},
+  {id:"CHK", lb:"check",    sb:"fully determined?",   c:"var(--ok)"},
+  {id:"MDL", lb:"model",    sb:"last resort",         c:"var(--l5)"},
+  {id:"VFY", lb:"verify",   sb:"ground · check",      c:"var(--l6)"},
+  {id:"ANS", lb:"answer",   sb:"saved / belief / refusal", c:"var(--ok)"}
+];
+
+/* ─────────────────────────── RENDER ─────────────────────────── */
+const stackEl = document.getElementById("stack");
+stackEl.innerHTML = LAYERS.map(l => `
+  <div class="layer" data-id="${l.id}" style="--c:${l.c}">
+    <div class="id">${l.id}</div>
+    <div><div class="nm">${l.nm}</div><div class="ds">${l.ds}</div></div>
+    <div class="mt"><b>${l.b}</b><br>${l.h}</div>
+  </div>`).join("");
+
+const loopEl = document.getElementById("loop");
+loopEl.innerHTML = LOOP.map((s,i) => `
+  <div class="step" data-i="${i}">
+    ${s.gate ? `<div class="gate ${s.m?'m':''}">${s.gate}</div>` : ""}
+    <div class="k">${s.k}</div><div class="t">${s.t}</div><div class="d">${s.d}</div>
+  </div>`).join("");
+
+const railEl = document.getElementById("rail");
+railEl.innerHTML = RAIL.map(r => `
+  <div class="node" data-id="${r.id}" style="--c:${r.c}">
+    <div class="dot">${r.id}</div><div class="lb">${r.lb}</div><div class="sb">${r.sb}</div>
+  </div>`).join("");
+
+/* ─────────────────────────── ANIMATION ───────────────────────────
+   Deliberately dependency-free. Motion is loaded opportunistically, but every
+   animation here works with plain Web Animations API (element.animate), which
+   is native in every modern browser and needs no CDN. This was measured, not
+   assumed: cross-origin script loading proved unreliable over file://, and a
+   demo that goes blank offline is worse than one with simple motion.          */
+const HAS_WAAPI = typeof Element !== "undefined" && !!Element.prototype.animate;
+
+function pulse(el, ms) {
+  if (!HAS_WAAPI) return;
+  el.animate(
+    [{ transform: "scale(1)" }, { transform: "scale(1.12)" }, { transform: "scale(1)" }],
+    { duration: ms, easing: "cubic-bezier(.4,0,.2,1)" }
+  );
+}
+function glowIn(el, ms) {
+  if (!HAS_WAAPI) return;
+  el.animate(
+    [{ opacity: 0.25 }, { opacity: 1 }, { opacity: 0.25 }],
+    { duration: ms, easing: "ease-in-out" }
+  );
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* play a sequence, lighting one element at a time */
+function sequencer(nodes, cls, stepMs, onIndex) {
+  let stopped = false;
+  async function run() {
+    nodes.forEach(n => n.classList.remove(cls));
+    for (let i = 0; i < nodes.length && !stopped; i++) {
+      const n = nodes[i];
+      nodes.forEach(x => x.classList.remove(cls));
+      n.classList.add(cls);
+      pulse(n, stepMs);
+      if (onIndex) onIndex(i, n);
+      await sleep(stepMs);
+    }
+    if (stopped) return;
+    nodes.forEach(n => n.classList.remove(cls));
+  }
+  return {
+    start() { stopped = false; run(); },
+    stop() { stopped = true; nodes.forEach(n => n.classList.remove(cls)); }
+  };
+}
+
+/* ── 1 · Layer cycle ── */
+const layerNodes = [...stackEl.querySelectorAll(".layer")];
+const seqLayers = sequencer(layerNodes, "hot", 760);
+
+/* ── 2 · Loop ── */
+const loopNodes = [...loopEl.querySelectorAll(".step")];
+const loopSay = document.getElementById("loopSay");
+const SAY = ["normalizing input…","routing — no model needed","recalling 5–20 items with provenance",
+  "answer already determined — model never called","no match: building a plan","owner approval requested",
+  "executing with idempotency key","verifying result vs intent","labelling confidence + source","writing episode"];
+const seqLoop = sequencer(loopNodes, "hot", 900, i => { loopSay.textContent = SAY[i]; });
+
+/* ── 3 · Token path ── */
+const railNodes = [...railEl.querySelectorAll(".node")];
+const spark = document.getElementById("spark");
+const DELAYS = [420, 620, 520, 900, 720, 1400, 620, 520];
+
+async function runPath() {
+  const box = railEl.getBoundingClientRect();
+  spark.style.opacity = "1";
+  for (let i = 0; i < railNodes.length; i++) {
+    railNodes.forEach(x => x.classList.remove("on"));
+    railNodes[i].classList.add("on");
+    pulse(railNodes[i].querySelector(".dot"), DELAYS[i]);
+
+    // glide the spark to this node — native WAAPI, no library
+    const r = railNodes[i].getBoundingClientRect();
+    const x = (r.left - box.left) + r.width / 2 - 4.5;
+    if (HAS_WAAPI) {
+      spark.animate(
+        [{ left: spark.style.left || "0px" }, { left: x + "px" }],
+        { duration: DELAYS[i], easing: "ease-in-out", fill: "forwards" }
+      );
+    }
+    spark.style.left = x + "px";
+    await sleep(DELAYS[i] + 60);
+  }
+  spark.style.opacity = "0";
+  await sleep(700);
+  railNodes.forEach(x => x.classList.remove("on"));
+}
+
+/* ─────────────────────────── WIRING ─────────────────────────── */
+document.getElementById("playLayers").onclick = () => seqLayers.start();
+document.getElementById("stopLayers").onclick = () => seqLayers.stop();
+document.getElementById("playLoop").onclick   = () => seqLoop.start();
+document.getElementById("stopLoop").onclick   = () => { seqLoop.stop(); loopSay.textContent = "idle"; };
+document.getElementById("playPath").onclick   = () => runPath();
+
+/* auto-start the two passive animations — no dependency, so no waiting */
+setTimeout(() => seqLayers.start(), 500);
+setTimeout(() => runPath(), 1400);
+</script>
+</body>
+</html>
